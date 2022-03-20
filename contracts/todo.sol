@@ -17,32 +17,44 @@ contract todoList {
         address wallet;
     }
 
+    string[] private postedTasksHeads;
+    string[] private execVerifHeads;
+    string[] private execApplyHeads;
+
     mapping(string => Task) private postedTasks;
     mapping(string => Exec) private execApplies;
     mapping(string => Exec) private execVerif;
 
-    event print(string name, string descr);
+    event print(string name, uint reward, uint dueDate, string descr);
     event sendStamp(uint stamp);
+    event checkBal(uint bal);
 
     constructor() {
         owner = msg.sender;
     }
 
-    function placeTask(string calldata name, uint dueDate, uint reward, string calldata description) public {
-        require(msg.sender == owner);
+    function compareStrings(string memory a, string memory b) private view returns (bool) {
+        return (keccak256(abi.encodePacked((a))) == keccak256(abi.encodePacked((b))));
+    }
+
+    function placeTask(string calldata name, uint dueDate, uint reward, string calldata description) payable public {
+        require(msg.sender == owner, "You don't have rights for this action");
+        require(reward == msg.value/2, "Insufficient deposits");
         heads.push(name);
         Task memory newTask;
         newTask.descr = description;
         newTask.dueDate = dueDate;
         newTask.reward = reward;
         postedTasks[name] = newTask;
+        postedTasksHeads.push(name);
+        emit checkBal(address(this).balance);
     }
 
     function printAllTasks() public {
         string memory name;
         for (uint i = 0; i<heads.length; i++) {
             name = heads[i];
-            emit print(name, postedTasks[name].descr);
+            emit print(name, postedTasks[name].reward, postedTasks[name].dueDate, postedTasks[name].descr);
         }
     }
 
@@ -53,6 +65,7 @@ contract todoList {
         newApply.sign = keccak256(abi.encodePacked(name, msg.sender, stamp));
         newApply.wallet = msg.sender;
         execApplies[name] = newApply;
+        execApplyHeads.push(name);
         emit sendStamp(stamp);       
     }
 
@@ -60,5 +73,24 @@ contract todoList {
         require(msg.sender == owner, "You don't have rights for this action");
         bytes32 makeSign = keccak256(abi.encodePacked(name, execApplies[name].wallet, nonce));
         require(makeSign == execApplies[name].sign, "Signatures don't match");
+        execVerifHeads.push(name);
+        execVerif[name] = execApplies[name];
+    }
+
+    function setTaskDone(string memory execName, string memory taskName) public {
+        require(msg.sender == owner, "You don't have rights for this action");
+        uint i;
+        for (i = 0; i < execVerifHeads.length; i++) {
+            if (compareStrings(execVerifHeads[i], execName))
+                break;
+        }
+        require(i != execVerifHeads.length, "User doesn't exist or is not verified");
+        for (i = 0; i < postedTasksHeads.length; i++) {
+            if (compareStrings(postedTasksHeads[i], taskName))
+                break;
+        }
+        require(i != postedTasksHeads.length, "Task doesn't exist");
+        payable(execVerif[execName].wallet).transfer(postedTasks[taskName].reward);
+        payable(owner).transfer(postedTasks[taskName].reward);
     }
 }
